@@ -45,7 +45,34 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step - show OAuth URL and collect auth code."""
+        """Handle the initial step - show OAuth URL and instructions."""
+        if user_input is not None:
+            # User clicked "Next", proceed to auth code collection
+            return await self.async_step_auth()
+
+        # Generate PKCE pair
+        self._pkce_verifier, self._pkce_challenge = generate_pkce()
+
+        params = urlencode({
+            "response_type": "code",
+            "client_id": OAUTH_CLIENT_ID,
+            "redirect_uri": OAUTH_REDIRECT_URI,
+            "scope": OAUTH_SCOPES,
+            "code_challenge": self._pkce_challenge,
+            "code_challenge_method": "S256",
+        })
+        oauth_url = f"{OAUTH_AUTHORIZE_URL}?{params}"
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema({}),  # No fields, just instructions
+            description_placeholders={"oauth_url": oauth_url},
+        )
+
+    async def async_step_auth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the auth code collection step."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -72,25 +99,11 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
                         },
                     )
 
-        # Generate PKCE pair
-        self._pkce_verifier, self._pkce_challenge = generate_pkce()
-
-        params = urlencode({
-            "response_type": "code",
-            "client_id": OAUTH_CLIENT_ID,
-            "redirect_uri": OAUTH_REDIRECT_URI,
-            "scope": OAUTH_SCOPES,
-            "code_challenge": self._pkce_challenge,
-            "code_challenge_method": "S256",
-        })
-        oauth_url = f"{OAUTH_AUTHORIZE_URL}?{params}"
-
         return self.async_show_form(
-            step_id="user",
+            step_id="auth",
             data_schema=vol.Schema({
                 vol.Required("auth_code"): str,
             }),
-            description_placeholders={"oauth_url": oauth_url},
             errors=errors,
         )
 
