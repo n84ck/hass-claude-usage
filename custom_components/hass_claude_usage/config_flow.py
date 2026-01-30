@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from typing import Any
 from urllib.parse import urlencode
@@ -41,6 +42,7 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._pkce_verifier: str | None = None
         self._pkce_challenge: str | None = None
+        self._state: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -50,22 +52,26 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
             # User clicked "Next", proceed to auth code collection
             return await self.async_step_auth()
 
-        # Generate PKCE pair
+        # Generate PKCE pair (verifier doubles as state, matching Claude Code)
         self._pkce_verifier, self._pkce_challenge = generate_pkce()
 
         params = urlencode({
-            "response_type": "code",
+            "code": "true",
             "client_id": OAUTH_CLIENT_ID,
+            "response_type": "code",
             "redirect_uri": OAUTH_REDIRECT_URI,
             "scope": OAUTH_SCOPES,
             "code_challenge": self._pkce_challenge,
             "code_challenge_method": "S256",
+            "state": self._pkce_verifier,
         })
         oauth_url = f"{OAUTH_AUTHORIZE_URL}?{params}"
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({}),  # No fields, just instructions
+            data_schema=vol.Schema({
+                vol.Optional("oauth_url", default=oauth_url): str,
+            }),
             description_placeholders={"oauth_url": oauth_url},
         )
 
@@ -109,13 +115,15 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _exchange_code(self, code: str) -> dict[str, Any] | None:
         """Exchange authorization code for tokens."""
-        # The code from the callback URL may contain a fragment; strip it
-        if "#" in code:
-            code = code.split("#")[0]
+        # The code from the callback URL may contain a # separator with state
+        code_parts = code.split("#")
+        auth_code = code_parts[0]
+        state = code_parts[1] if len(code_parts) > 1 else ""
 
         payload = {
             "grant_type": "authorization_code",
-            "code": code,
+            "code": auth_code,
+            "state": state,
             "client_id": OAUTH_CLIENT_ID,
             "redirect_uri": OAUTH_REDIRECT_URI,
             "code_verifier": self._pkce_verifier,
@@ -125,8 +133,8 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     OAUTH_TOKEN_URL,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
+                    data=payload,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
                     timeout=aiohttp.ClientTimeout(total=15),
                 ) as resp:
                     if not resp.ok:

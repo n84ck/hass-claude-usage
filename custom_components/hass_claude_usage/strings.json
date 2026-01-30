@@ -2,8 +2,11 @@
   "config": {
     "step": {
       "user": {
-        "title": "Claude OAuth Setup",
-        "description": "To connect your Claude account, you'll need to authorize this integration.\n\n**Step 1:** Open this URL in your browser:\n\n{oauth_url}\n\n**Step 2:** Log in to your Anthropic account and click 'Authorize'\n\n**Step 3:** You'll be redirected to a page with an authorization code\n\nClick 'Submit' below when ready to enter the code."
+        "title": "Claude OAuth Setup - Step 1",
+        "description": "Copy the OAuth URL below, open it in your browser, and authorize the integration. Then click Submit to continue.",
+        "data": {
+          "oauth_url": "OAuth URL (copy and open in browser)"
+        }
       },
       "auth": {
         "title": "Enter Authorization Code",

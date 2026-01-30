@@ -81,7 +81,6 @@ class ClaudeUsageCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         access_token = self.config_entry.data[CONF_ACCESS_TOKEN]
         headers = {
             "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
             "anthropic-beta": API_BETA_HEADER,
         }
 
@@ -121,8 +120,8 @@ class ClaudeUsageCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     OAUTH_TOKEN_URL,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
+                    data=payload,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
                     timeout=aiohttp.ClientTimeout(total=15),
                 ) as resp:
                     if not resp.ok:
