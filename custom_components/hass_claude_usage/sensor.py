@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -17,6 +18,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import ClaudeUsageConfigEntry, ClaudeUsageCoordinator
 from .const import DOMAIN, SENSOR_DEFINITIONS
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -82,5 +85,9 @@ class ClaudeUsageSensor(CoordinatorEntity[ClaudeUsageCoordinator], SensorEntity)
             return None
         value = self.coordinator.data.get(self._key)
         if value is not None and self._is_timestamp:
-            return datetime.fromisoformat(value)
+            try:
+                return datetime.fromisoformat(value)
+            except (ValueError, TypeError):
+                _LOGGER.warning("Invalid timestamp value for %s: %s", self._key, value)
+                return None
         return value
