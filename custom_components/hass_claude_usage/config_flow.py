@@ -13,11 +13,11 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.helpers import aiohttp_client
 
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_EXPIRES_AT,
-    CONF_PKCE_VERIFIER,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
@@ -52,8 +52,9 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
             # User clicked "Next", proceed to auth code collection
             return await self.async_step_auth()
 
-        # Generate PKCE pair (verifier doubles as state, matching Claude Code)
+        # Generate PKCE pair and a separate state for CSRF protection
         self._pkce_verifier, self._pkce_challenge = generate_pkce()
+        self._state = secrets.token_urlsafe(32)
 
         params = urlencode({
             "code": "true",
@@ -63,7 +64,7 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
             "scope": OAUTH_SCOPES,
             "code_challenge": self._pkce_challenge,
             "code_challenge_method": "S256",
-            "state": self._pkce_verifier,
+            "state": self._state,
         })
         oauth_url = f"{OAUTH_AUTHORIZE_URL}?{params}"
 
@@ -120,6 +121,11 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
         auth_code = code_parts[0]
         state = code_parts[1] if len(code_parts) > 1 else ""
 
+        # Validate state parameter to prevent CSRF
+        if state and self._state and state != self._state:
+            _LOGGER.error("OAuth state mismatch - possible CSRF attack")
+            return None
+
         payload = {
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -130,18 +136,21 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
         }
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    OAUTH_TOKEN_URL,
-                    data=payload,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    timeout=aiohttp.ClientTimeout(total=15),
-                ) as resp:
-                    if not resp.ok:
-                        body = await resp.text()
-                        _LOGGER.error("Token exchange failed (%s): %s", resp.status, body)
-                        return None
-                    return await resp.json()
+            session = aiohttp_client.async_get_clientsession(self.hass)
+            resp = await session.post(
+                OAUTH_TOKEN_URL,
+                data=payload,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=aiohttp.ClientTimeout(total=15),
+            )
+            if not resp.ok:
+                _LOGGER.error("Token exchange failed (%s)", resp.status)
+                return None
+            token_data = await resp.json()
+            if "access_token" not in token_data:
+                _LOGGER.error("Token exchange response missing access_token")
+                return None
+            return token_data
         except aiohttp.ClientError:
             _LOGGER.exception("Token exchange request failed")
             return None
