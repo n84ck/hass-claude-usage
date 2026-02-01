@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
-import secrets
-import base64
 import time
 from datetime import timedelta
 from typing import Any
@@ -175,9 +172,3 @@ def _parse_usage(raw: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def generate_pkce() -> tuple[str, str]:
-    """Generate PKCE code_verifier and code_challenge."""
-    verifier = secrets.token_urlsafe(32)
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    return verifier, challenge

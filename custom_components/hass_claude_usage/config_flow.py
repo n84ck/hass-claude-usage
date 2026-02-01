@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import logging
 import secrets
 import time
@@ -28,7 +30,6 @@ from .const import (
     OAUTH_SCOPES,
     OAUTH_TOKEN_URL,
 )
-from . import generate_pkce
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -184,3 +185,11 @@ class ClaudeUsageOptionsFlow(OptionsFlow):
                 ),
             }),
         )
+
+
+def generate_pkce() -> tuple[str, str]:
+    """Generate PKCE code_verifier and code_challenge."""
+    verifier = secrets.token_urlsafe(32)
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
