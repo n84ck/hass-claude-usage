@@ -21,7 +21,6 @@ CONF_ACCESS_TOKEN = "access_token"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_EXPIRES_AT = "expires_at"
 CONF_UPDATE_INTERVAL = "update_interval"
-CONF_PKCE_VERIFIER = "pkce_verifier"
 
 # Sensor definitions: (key, name, unit, icon, device_class)
 # key corresponds to a path in the parsed usage data dict
