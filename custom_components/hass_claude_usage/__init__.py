@@ -6,6 +6,7 @@ import hashlib
 import logging
 import secrets
 import base64
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -14,6 +15,7 @@ import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import aiohttp_client
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -85,14 +87,14 @@ class ClaudeUsageCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    USAGE_API_URL, headers=headers, timeout=aiohttp.ClientTimeout(total=15)
-                ) as resp:
-                    if resp.status == 401:
-                        raise UpdateFailed("Authentication failed - token may be invalid")
-                    resp.raise_for_status()
-                    raw = await resp.json()
+            session = aiohttp_client.async_get_clientsession(self.hass)
+            resp = await session.get(
+                USAGE_API_URL, headers=headers, timeout=aiohttp.ClientTimeout(total=15)
+            )
+            if resp.status == 401:
+                raise UpdateFailed("Authentication failed - token may be invalid")
+            resp.raise_for_status()
+            raw = await resp.json()
         except aiohttp.ClientError as err:
             raise UpdateFailed(f"Error fetching usage data: {err}") from err
 
@@ -100,8 +102,6 @@ class ClaudeUsageCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _ensure_valid_token(self) -> None:
         """Refresh the access token if expired."""
-        import time
-
         expires_at = self.config_entry.data.get(CONF_EXPIRES_AT, 0)
         if time.time() < expires_at - 60:
             return
@@ -117,19 +117,21 @@ class ClaudeUsageCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    OAUTH_TOKEN_URL,
-                    data=payload,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    timeout=aiohttp.ClientTimeout(total=15),
-                ) as resp:
-                    if not resp.ok:
-                        body = await resp.text()
-                        raise UpdateFailed(f"Token refresh failed ({resp.status}): {body}")
-                    token_data = await resp.json()
+            session = aiohttp_client.async_get_clientsession(self.hass)
+            resp = await session.post(
+                OAUTH_TOKEN_URL,
+                data=payload,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=aiohttp.ClientTimeout(total=15),
+            )
+            if not resp.ok:
+                raise UpdateFailed(f"Token refresh failed ({resp.status})")
+            token_data = await resp.json()
         except aiohttp.ClientError as err:
             raise UpdateFailed(f"Token refresh request failed: {err}") from err
+
+        if "access_token" not in token_data:
+            raise UpdateFailed("Token refresh response missing access_token")
 
         new_data = {
             **self.config_entry.data,
