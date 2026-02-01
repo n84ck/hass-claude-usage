@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -150,8 +150,20 @@ def _parse_usage(raw: dict[str, Any]) -> dict[str, Any]:
 
     seven_day = raw.get("seven_day")
     if seven_day:
-        data["week_usage_percent"] = seven_day.get("utilization")
-        data["week_reset_time"] = seven_day.get("resets_at")
+        utilization = seven_day.get("utilization")
+        reset_time = seven_day.get("resets_at")
+        data["week_usage_percent"] = utilization
+        data["week_reset_time"] = reset_time
+        if utilization is not None and reset_time:
+            try:
+                reset_dt = datetime.fromisoformat(reset_time)
+                now = datetime.now(timezone.utc)
+                week_seconds = 7 * 24 * 60 * 60
+                elapsed = week_seconds - (reset_dt - now).total_seconds()
+                percent_elapsed = (elapsed / week_seconds) * 100
+                data["week_usage_pace"] = round(utilization - percent_elapsed, 1)
+            except (ValueError, TypeError):
+                pass
 
     seven_day_sonnet = raw.get("seven_day_sonnet")
     if seven_day_sonnet:
